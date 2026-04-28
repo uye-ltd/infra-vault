@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
     environment:
       VAULT_ADDR: http://vault:8200
-      VAULT_UNSEAL_KEY: ${VAULT_UNSEAL_KEY}
+      VAULT_UNSEAL_KEY: ${VAULT_UNSEAL_KEY:-}  # empty on first run; filled after make init
       INTERVAL: "15"
     depends_on:
       - vault

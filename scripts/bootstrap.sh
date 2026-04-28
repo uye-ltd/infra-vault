@@ -17,6 +17,19 @@ for cmd in docker git make curl; do
   command -v "$cmd" &>/dev/null || { echo "Error: '$cmd' is required but not installed."; exit 1; }
 done
 
+# Check Docker socket access before doing anything else
+if ! docker info >/dev/null 2>&1; then
+  echo ""
+  echo "Error: cannot connect to Docker. Your user needs to be in the 'docker' group."
+  echo ""
+  echo "  Fix:"
+  echo "    sudo usermod -aG docker \$USER"
+  echo "    newgrp docker          # apply without logging out"
+  echo ""
+  echo "Then re-run this script."
+  exit 1
+fi
+
 # Clone or update the repository
 if [ -d "$INSTALL_DIR/.git" ]; then
   step "Repository already exists — pulling latest..."
