@@ -5,8 +5,6 @@ services:
     image: hashicorp/vault:1.17
     container_name: vault
     restart: unless-stopped
-    cap_add:
-      - IPC_LOCK
     environment:
       VAULT_API_ADDR: ${VAULT_API_ADDR:-http://127.0.0.1:8200}
     ports:
