@@ -5,7 +5,7 @@ services:
     image: hashicorp/vault:1.17
     container_name: vault
     restart: unless-stopped
-    user: "0"  # entrypoint chowns /vault/data → drops to vault user via su-exec; without this, named volumes are root-owned and vault can't write
+    user: "0"  # entrypoint chowns /vault/file + /vault/logs → drops to vault user via su-exec; without this, named volumes are root-owned and vault can't write
     environment:
       VAULT_API_ADDR: ${VAULT_API_ADDR:-http://127.0.0.1:8200}
     ports:
@@ -14,7 +14,7 @@ services:
       - ../vault/config:/vault/config:ro
       - vault-data:/vault/file
       - vault-logs:/vault/logs
-    command: server -config=/vault/config/vault.hcl
+    command: server  # entrypoint prepends -config=/vault/config; specifying the file too causes double-load → duplicate listeners
     healthcheck:
       test: ["CMD", "sh", "-c", "vault status -address=http://127.0.0.1:8200 || exit 0"]
       interval: 15s
