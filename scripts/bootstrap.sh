@@ -13,21 +13,34 @@ GREEN='\033[0;32m'; BOLD='\033[1m'; NC='\033[0m'
 step() { echo -e "${GREEN}==>${NC} $*"; }
 box()  { echo -e "${BOLD}$*${NC}"; }
 
-for cmd in docker git make curl; do
+for cmd in git make curl sudo; do
   command -v "$cmd" &>/dev/null || { echo "Error: '$cmd' is required but not installed."; exit 1; }
 done
 
-# Check Docker socket access before doing anything else
+# Docker socket check — common failure point on first run
 if ! docker info >/dev/null 2>&1; then
   echo ""
-  echo "Error: cannot connect to Docker. Your user needs to be in the 'docker' group."
+  echo "Error: cannot connect to Docker."
   echo ""
-  echo "  Fix:"
+  echo "  Fix: add your user to the docker group, then open a NEW SSH session:"
   echo "    sudo usermod -aG docker \$USER"
-  echo "    newgrp docker          # apply without logging out"
+  echo "    # Log out completely and SSH back in, then re-run this script."
+  echo "  (newgrp docker only works for a subshell, not for curl | bash)"
   echo ""
-  echo "Then re-run this script."
   exit 1
+fi
+
+# Docker Compose v2 check (plugin, not standalone docker-compose)
+if ! docker compose version >/dev/null 2>&1; then
+  echo "Error: Docker Compose v2 plugin not found."
+  echo "Install Docker Engine via: https://docs.docker.com/engine/install/ubuntu/"
+  exit 1
+fi
+
+# Install jq if missing — required for vault init output parsing
+if ! command -v jq &>/dev/null; then
+  step "Installing jq..."
+  sudo apt-get update -qq && sudo apt-get install -y -qq jq
 fi
 
 # Clone or update the repository
@@ -41,37 +54,35 @@ fi
 
 cd "$INSTALL_DIR"
 
-# Create .env if not already present
 if [ ! -f .env ]; then
   cp .env.example .env
   step "Created .env from template"
 fi
 
-# Start containers, building vault-unseal locally on first run
 step "Starting containers (building vault-unseal locally for first run)..."
 docker compose -f docker/docker-compose.yml up -d --build
 
 echo ""
 box "================================================================"
-box "  Vault is starting. Complete the following steps:"
+box "  Setup complete. Next steps:"
 box "================================================================"
 echo ""
-echo "  1. Initialize Vault and get your keys:"
+echo "  1. Initialize Vault:"
 echo "     cd $INSTALL_DIR && make init"
 echo ""
-echo "  2. Fill in the unseal key in .env:"
+echo "  2. Save the unseal key to .env:"
 echo "     nano $INSTALL_DIR/.env"
 echo "     → VAULT_UNSEAL_KEY=<key printed by make init>"
 echo ""
-echo "  3. Restart so vault-unseal picks up the key:"
+echo "  3. Restart to activate auto-unseal:"
 echo "     make up"
 echo ""
-echo "  4. Install the GitHub Actions runner on this server:"
+echo "  4. Install the GitHub Actions runner:"
 echo "     Go to: https://github.com/uye-ltd/infra-vault/settings/actions/runners"
-echo "     Click 'New self-hosted runner' and follow the Linux instructions."
-echo "     When asked for the runner directory, use: $INSTALL_DIR/runner"
+echo "     Click 'New self-hosted runner', follow the Linux instructions."
+echo "     Runner directory: $INSTALL_DIR/runner"
 echo ""
-echo "  5. Add one GitHub Secret:"
+echo "  5. Add one GitHub Secret (Settings → Secrets → Actions):"
 echo "     VAULT_TOKEN = <CI/CD token printed by make init>"
 echo ""
 echo "  After that, every push to main deploys automatically — no SSH needed."

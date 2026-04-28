@@ -12,21 +12,36 @@ warn() { echo -e "${YELLOW}[warn]${NC} $*"; }
 err()  { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
 box()  { echo -e "${BOLD}$*${NC}"; }
 
-for cmd in vault jq curl; do
-  command -v "$cmd" &>/dev/null || err "Required command not found: $cmd"
-done
+# jq is required for parsing init output; install via bootstrap.sh or: sudo apt install jq
+command -v jq &>/dev/null || err "jq is required. Install with: sudo apt install jq"
+command -v curl &>/dev/null || err "curl is required."
+
+# Use local vault CLI if available, otherwise run commands inside the vault container
+if command -v vault &>/dev/null; then
+  vault_cmd() { vault "$@"; }
+else
+  command -v docker &>/dev/null || err "Neither 'vault' CLI nor 'docker' found."
+  log "vault CLI not found — using 'docker exec vault vault'"
+  # -i keeps stdin open so 'vault policy write name -' can read from a pipe
+  vault_cmd() {
+    docker exec -i \
+      -e VAULT_ADDR="${VAULT_ADDR}" \
+      -e VAULT_TOKEN="${VAULT_TOKEN:-}" \
+      vault vault "$@"
+  }
+fi
 
 log "Checking Vault at $VAULT_ADDR..."
-curl -sf "$VAULT_ADDR/v1/sys/health" >/dev/null 2>&1 || err "Vault is not reachable. Is it running?"
+curl -sf "$VAULT_ADDR/v1/sys/health" >/dev/null 2>&1 || err "Vault is not reachable. Is 'make up' running?"
 
-INIT_STATUS=$(vault status -format=json 2>/dev/null || true)
+INIT_STATUS=$(vault_cmd status -format=json 2>/dev/null || true)
 if echo "$INIT_STATUS" | jq -e '.initialized == true' >/dev/null 2>&1; then
   warn "Vault is already initialized. Use scripts/apply-policies.sh to sync policies."
   exit 0
 fi
 
 log "Initializing Vault with 1 key share..."
-INIT_OUTPUT=$(vault operator init -key-shares=1 -key-threshold=1 -format=json)
+INIT_OUTPUT=$(vault_cmd operator init -key-shares=1 -key-threshold=1 -format=json)
 UNSEAL_KEY=$(echo "$INIT_OUTPUT" | jq -r '.unseal_keys_b64[0]')
 ROOT_TOKEN=$(echo "$INIT_OUTPUT" | jq -r '.root_token')
 
@@ -38,39 +53,39 @@ box "  Unseal Key : $UNSEAL_KEY"
 box "  Root Token : $ROOT_TOKEN"
 box "================================================================"
 echo ""
-echo "  Next steps:"
-echo "  1. Add to GitHub Secrets:  VAULT_UNSEAL_KEY = $UNSEAL_KEY"
-echo "  2. Add to server .env file: VAULT_UNSEAL_KEY=$UNSEAL_KEY"
-echo "  3. Store root token in a password manager, then revoke it after setup"
+echo "  1. Add to server .env: VAULT_UNSEAL_KEY=$UNSEAL_KEY"
+echo "  2. Store root token in a password manager, then revoke it after setup"
 echo ""
 
 log "Unsealing Vault..."
-vault operator unseal "$UNSEAL_KEY"
+vault_cmd operator unseal "$UNSEAL_KEY"
 
 export VAULT_TOKEN="$ROOT_TOKEN"
 
 log "Enabling KV v2 secrets engine at secret/..."
-vault secrets enable -path=secret kv-v2
+vault_cmd secrets enable -path=secret kv-v2
 
 log "Enabling AppRole auth method..."
-vault auth enable approle
+vault_cmd auth enable approle
 
 log "Enabling audit log..."
-vault audit enable file file_path=/vault/logs/audit.log
+vault_cmd audit enable file file_path=/vault/logs/audit.log
 
 log "Applying policies from vault/policies/..."
 for policy_file in "$REPO_ROOT/vault/policies/"*.hcl; do
   policy_name=$(basename "$policy_file" .hcl)
-  vault policy write "$policy_name" "$policy_file"
+  vault_cmd policy write "$policy_name" - < "$policy_file"
   log "  Applied: $policy_name"
 done
 
 log "Creating ops token (non-expiring, for CI/CD)..."
-OPS_TOKEN=$(vault token create -policy=ops -display-name=ci-ops -format=json | jq -r '.auth.client_token')
-echo ""
-box "  CI/CD Token (ops policy): $OPS_TOKEN"
-echo "  Add to GitHub Secrets as: VAULT_TOKEN"
-echo ""
+OPS_TOKEN=$(vault_cmd token create -policy=ops -display-name=ci-ops -format=json | jq -r '.auth.client_token')
 
+echo ""
+box "================================================================"
+box "  CI/CD Token (ops policy): $OPS_TOKEN"
+box "  Add to GitHub Secrets as: VAULT_TOKEN"
+box "================================================================"
+echo ""
 log "Vault is ready."
 log "Create your first app role with: ./scripts/new-app-role.sh <app-name>"

@@ -18,6 +18,17 @@ export VAULT_TOKEN
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 POLICY_FILE="$REPO_ROOT/vault/policies/${APP_NAME}.hcl"
 
+if command -v vault &>/dev/null; then
+  vault_cmd() { vault "$@"; }
+else
+  vault_cmd() {
+    docker exec -i \
+      -e VAULT_ADDR="${VAULT_ADDR}" \
+      -e VAULT_TOKEN="${VAULT_TOKEN}" \
+      vault vault "$@"
+  }
+fi
+
 if [ -f "$POLICY_FILE" ]; then
   echo "Policy file already exists: $POLICY_FILE — using existing file"
 else
@@ -45,17 +56,17 @@ EOF
   echo "Created policy: $POLICY_FILE"
 fi
 
-vault policy write "$APP_NAME" "$POLICY_FILE"
+vault_cmd policy write "$APP_NAME" - < "$POLICY_FILE"
 
-vault write "auth/approle/role/${APP_NAME}" \
+vault_cmd write "auth/approle/role/${APP_NAME}" \
   token_policies="$APP_NAME" \
   token_ttl=1h \
   token_max_ttl=4h \
   secret_id_ttl=0 \
   secret_id_num_uses=0
 
-ROLE_ID=$(vault read -field=role_id "auth/approle/role/${APP_NAME}/role-id")
-SECRET_ID=$(vault write -f -field=secret_id "auth/approle/role/${APP_NAME}/secret-id")
+ROLE_ID=$(vault_cmd read -field=role_id "auth/approle/role/${APP_NAME}/role-id")
+SECRET_ID=$(vault_cmd write -f -field=secret_id "auth/approle/role/${APP_NAME}/secret-id")
 
 echo ""
 echo "AppRole created for: $APP_NAME"
