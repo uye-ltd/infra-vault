@@ -32,7 +32,7 @@ else
 fi
 
 log "Checking Vault at $VAULT_ADDR..."
-curl -sf "$VAULT_ADDR/v1/sys/health" >/dev/null 2>&1 || err "Vault is not reachable. Is 'make up' running?"
+curl -s --max-time 5 "$VAULT_ADDR/v1/sys/health" >/dev/null 2>&1 || err "Vault is not reachable. Is 'make up' running?"
 
 INIT_STATUS=$(vault_cmd status -format=json 2>/dev/null || true)
 if echo "$INIT_STATUS" | jq -e '.initialized == true' >/dev/null 2>&1; then
