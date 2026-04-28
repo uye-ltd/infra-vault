@@ -5,6 +5,7 @@ services:
     image: hashicorp/vault:1.17
     container_name: vault
     restart: unless-stopped
+    user: "0"  # entrypoint chowns /vault/data → drops to vault user via su-exec; without this, named volumes are root-owned and vault can't write
     environment:
       VAULT_API_ADDR: ${VAULT_API_ADDR:-http://127.0.0.1:8200}
     ports:
