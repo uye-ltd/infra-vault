@@ -22,10 +22,11 @@ if ! docker info >/dev/null 2>&1; then
   echo ""
   echo "Error: cannot connect to Docker."
   echo ""
-  echo "  Fix: add your user to the docker group, then open a NEW SSH session:"
+  echo "  Fix:"
   echo "    sudo usermod -aG docker \$USER"
-  echo "    # Log out completely and SSH back in, then re-run this script."
-  echo "  (newgrp docker only works for a subshell, not for curl | bash)"
+  echo "    exit   # disconnect SSH completely, then reconnect"
+  echo ""
+  echo "  A new SSH session is required — group changes don't apply to existing sessions."
   echo ""
   exit 1
 fi

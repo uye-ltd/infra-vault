@@ -96,19 +96,50 @@ This repo contains:
 
 ## First-time server setup
 
-### 1. Run the bootstrap script
+### Prerequisites: Docker group
 
-SSH into your server once, then run:
+Your user must be in the `docker` group. If `docker ps` shows a permission error:
+
+```bash
+sudo usermod -aG docker $USER
+exit            # disconnect SSH completely
+# reconnect, then verify:
+groups          # 'docker' must appear in the list
+```
+
+> Group changes only apply to new login sessions — `newgrp` is not sufficient.
+
+---
+
+### Step 1 — Get the repo onto the server
+
+**Option A — fresh server (recommended):** run the bootstrap script. It clones the repo, installs `jq`, and starts the containers in one step:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/uye-ltd/infra-vault/main/scripts/bootstrap.sh | bash
 ```
 
-This clones the repo to `~/infra-vault`, builds the vault-unseal image locally, and starts Vault. It prints the remaining steps when it finishes.
+Skip to **Step 2** when it finishes.
 
-> If you'd rather not pipe to bash, clone manually and run `bash scripts/bootstrap.sh`.
+**Option B — repo already cloned:** start the containers manually:
 
-### 2. Initialize Vault
+```bash
+cd ~/infra-vault
+git pull origin main          # make sure you have the latest
+make up                       # builds vault-unseal image and starts both containers
+```
+
+Verify the containers are running:
+
+```bash
+docker ps
+# Should show: vault   Up X seconds
+#              vault-unseal   Up X seconds
+```
+
+---
+
+### Step 2 — Initialize Vault
 
 ```bash
 cd ~/infra-vault
@@ -124,7 +155,7 @@ This runs `scripts/init-vault.sh`, which:
 - Applies all policies from `vault/policies/`
 - Creates an ops token for the CI/CD pipeline
 
-**The output will look like this — save it immediately:**
+**The output will look like this — save it immediately before doing anything else:**
 
 ```
 ================================================================
@@ -139,18 +170,22 @@ This runs `scripts/init-vault.sh`, which:
 
 | Value | Where to store it |
 |---|---|
-| Unseal Key | Password manager + server `.env` |
-| Root Token | Password manager only (rarely used, revoke after setup) |
-| CI/CD Token | GitHub Secret `VAULT_TOKEN` |
+| Unseal Key | Password manager + server `.env` (step 3) |
+| Root Token | Password manager only — revoke after setup (step 5) |
+| CI/CD Token | GitHub Secret `VAULT_TOKEN` (step 6) |
 
-### 3. Add the unseal key to .env
+---
+
+### Step 3 — Save the unseal key to .env
 
 ```bash
 nano ~/infra-vault/.env
 # Set: VAULT_UNSEAL_KEY=hvs.XXXXXXXX...
 ```
 
-### 4. Restart so vault-unseal picks up the key
+---
+
+### Step 4 — Restart so vault-unseal picks up the key
 
 ```bash
 make up
@@ -158,17 +193,18 @@ docker logs vault-unseal
 # Should show: [vault-unseal] vault unsealed successfully
 ```
 
-### 5. Revoke the root token
+---
 
-The root token bypasses all policies. Revoke it after setup and re-create it only if needed for break-glass situations:
+### Step 5 — Revoke the root token
+
+The root token bypasses all policies. Revoke it after setup — use the ops token for everything else:
 
 ```bash
-export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN=hvs.YYYYYYYY...
-vault token revoke "$VAULT_TOKEN"
+docker exec -e VAULT_ADDR=http://127.0.0.1:8200 \
+  vault vault token revoke hvs.YYYYYYYY...
 ```
 
-Use the ops token for day-to-day operations.
+---
 
 ### 6. Install the GitHub Actions runner
 
