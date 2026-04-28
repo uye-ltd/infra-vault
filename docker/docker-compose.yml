@@ -12,7 +12,7 @@ services:
       - "127.0.0.1:8200:8200" # bound to localhost only; reverse proxy handles external access
     volumes:
       - ../vault/config:/vault/config:ro
-      - vault-data:/vault/data
+      - vault-data:/vault/file
       - vault-logs:/vault/logs
     command: server -config=/vault/config/vault.hcl
     healthcheck:

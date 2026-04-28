@@ -2,7 +2,7 @@ ui            = true
 disable_mlock = true  # recommended for Docker; many VPS kernels ignore cap_add: IPC_LOCK silently
 
 storage "raft" {
-  path    = "/vault/data"
+  path    = "/vault/file"
   node_id = "vault-node-1"
 }
 
