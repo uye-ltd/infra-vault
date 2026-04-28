@@ -1,0 +1,66 @@
+{
+  "agent": "language-router",
+  "outputStyle": "Explanatory",
+  "lang": null,
+  "pipeline": {
+    "skipReview": false,
+    "skipPlanner": false,
+    "autoPerformance": false,
+    "maxIterations": 3,
+    "maxDebugCycles": 2,
+    "disableAgents": []
+  },
+  "context": {
+    "maxFiles": 20
+  },
+  "tools": [
+    "docker",
+    "docker-buildx",
+    "docker-compose",
+    "github-actions",
+    "kubernetes",
+    "vault"
+  ],
+  "skills": {
+    "exclude": [],
+    "include": [
+      "analyze-complexity",
+      "auth-review",
+      "ci-pipeline",
+      "debug-pipeline",
+      "dependency-audit",
+      "detect-code-smells",
+      "detect-n-plus-one",
+      "dockerfile",
+      "docs-api",
+      "docs-changelog",
+      "docs-readme",
+      "docs-review",
+      "docs-write",
+      "extract-api",
+      "find-references",
+      "find-symbol",
+      "input-validation",
+      "k8s",
+      "map-project",
+      "owasp-check",
+      "read-file",
+      "reference-api",
+      "reference-changelog",
+      "reference-config",
+      "reference-docs",
+      "reference-examples",
+      "reference-help",
+      "reference-list",
+      "reference-sourcecode",
+      "secrets-scan",
+      "security-scan",
+      "suggest-cache",
+      "summarize-module",
+      "trace-call-graph"
+    ]
+  },
+  "enabledPlugins": {
+    "uye@uye": true
+  }
+}

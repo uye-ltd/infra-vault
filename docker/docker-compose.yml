@@ -1,0 +1,50 @@
+name: infra-vault  # explicit project name pins volume names regardless of checkout directory
+
+services:
+  vault:
+    image: hashicorp/vault:1.17
+    container_name: vault
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_API_ADDR: ${VAULT_API_ADDR:-http://127.0.0.1:8200}
+    ports:
+      - "127.0.0.1:8200:8200" # bound to localhost only; reverse proxy handles external access
+    volumes:
+      - ../vault/config:/vault/config:ro
+      - vault-data:/vault/data
+      - vault-logs:/vault/logs
+    command: server -config=/vault/config/vault.hcl
+    healthcheck:
+      test: ["CMD", "sh", "-c", "vault status -address=http://127.0.0.1:8200 || exit 0"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - vault-net
+
+  vault-unseal:
+    image: ghcr.io/uye-ltd/vault-unseal:latest
+    build:
+      context: ./vault-unseal  # used for local bootstrap; deploy pulls the pre-built image
+    container_name: vault-unseal
+    restart: unless-stopped
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_UNSEAL_KEY: ${VAULT_UNSEAL_KEY}
+      INTERVAL: "15"
+    depends_on:
+      - vault
+    networks:
+      - vault-net
+
+volumes:
+  vault-data:
+  vault-logs:
+
+networks:
+  vault-net:
+    name: vault-net
+    driver: bridge

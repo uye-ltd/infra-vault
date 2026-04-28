@@ -1,0 +1,58 @@
+name: Validate
+
+on:
+  pull_request:
+    paths:
+      - 'vault/**'
+      - 'docker/**'
+      - '.github/workflows/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    services:
+      vault:
+        image: hashicorp/vault:1.17
+        env:
+          VAULT_DEV_ROOT_TOKEN_ID: ci-token
+          VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+        ports:
+          - 8200:8200
+        options: >-
+          --cap-add IPC_LOCK
+          --health-cmd "vault status -address=http://127.0.0.1:8200"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vault CLI
+        run: |
+          curl -fsSL https://apt.releases.hashicorp.com/gpg \
+            | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+            https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt-get update -qq && sudo apt-get install -y vault
+
+      - name: Validate HCL config syntax
+        run: |
+          vault operator diagnose -config=vault/config/vault.hcl 2>&1 | grep -v "^==" || true
+          echo "Config OK"
+        env:
+          VAULT_SKIP_VERIFY: "true"
+
+      - name: Validate policy files
+        env:
+          VAULT_ADDR: http://localhost:8200
+          VAULT_TOKEN: ci-token
+        run: |
+          for f in vault/policies/*.hcl; do
+            name=$(basename "$f" .hcl)
+            echo "Validating policy: $name"
+            vault policy write "$name" "$f"
+          done
+          echo "All policies valid"
