@@ -10,7 +10,7 @@ HashiCorp Vault secrets management for the UYE infrastructure. Runs as a Docker 
 - [How it works](#how-it-works)
 - [Prerequisites](#prerequisites)
 - [First-time server setup](#first-time-server-setup)
-- [Connecting the CI/CD pipeline](#connecting-the-cicd-pipeline)
+- [Connecting the CI/CD pipeline](#connecting-the-cicd-pipeline) (infra-runner deployer)
 - [Managing secrets](#managing-secrets)
 - [Giving an app access to secrets](#giving-an-app-access-to-secrets)
   - [Dockerized apps](#dockerized-apps)
@@ -34,7 +34,7 @@ This repo contains:
 - A companion container that automatically unseals Vault when it restarts
 - ACL policies that control per-app access
 - Scripts for common operations
-- A GitHub Actions pipeline that validates config on PRs and deploys on push to `main`
+- A GitHub Actions pipeline that validates config on PRs and builds/signs the `vault-unseal` image on push to `main`
 
 ---
 
@@ -74,7 +74,7 @@ This repo contains:
 
 **AppRole** is the auth method used by all apps. Each app has a `role_id` (public, like a username) and a `secret_id` (private, like a password). The app exchanges these for a short-lived token, then uses that token to read its secrets.
 
-**GitHub Actions self-hosted runner** runs directly on the server. It connects *outbound* to GitHub to receive jobs — no SSH port needs to be open, and no SSH keys are stored in GitHub. When you push to `main`, the runner pulls the latest code and images and restarts services locally.
+**GitHub Actions self-hosted runner** (provided by infra-runner) runs directly on the server. It connects *outbound* to GitHub to receive jobs — no SSH port needs to be open, no SSH keys are stored in GitHub. When you push to `main`, CI builds and signs the `vault-unseal` image on GHCR. The **infra-runner deployer** on the server detects the new image, verifies its cosign signature, restarts `vault-unseal`, and syncs all policies automatically — no deploy job needed in CI.
 
 ---
 
@@ -172,7 +172,7 @@ This runs `scripts/init-vault.sh`, which:
 |---|---|
 | Unseal Key | Password manager + server `.env` (step 3) |
 | Root Token | Password manager only — revoke after setup (step 5) |
-| CI/CD Token | GitHub Secret `VAULT_TOKEN` (step 6) |
+| CI/CD Token | infra-runner `.env` on server — see step 6 |
 
 ---
 
@@ -206,43 +206,50 @@ docker exec -e VAULT_ADDR=http://127.0.0.1:8200 \
 
 ---
 
-### 6. Install the GitHub Actions runner
+### Step 6 — Connect the infra-runner deployer
 
-This replaces SSH-based deployment. The runner connects outbound to GitHub and runs workflow jobs directly on the server — no inbound ports, no SSH keys in GitHub.
+Deployment is handled by the [infra-runner](https://github.com/uye-ltd/infra-runner) deployer running on the server. No SSH keys, WireGuard config, or `VAULT_TOKEN` are stored in GitHub Secrets.
 
-Go to your repository: **Settings → Actions → Runners → New self-hosted runner**
+**Prerequisites:** infra-runner must already be deployed on this server.
 
-Select **Linux** and follow the instructions GitHub shows. When prompted for the working directory, use `~/infra-vault/runner`.
-
-Start the runner as a system service so it survives reboots:
+#### On the server — enable vault integration in infra-runner
 
 ```bash
-cd ~/infra-vault/runner
-sudo ./svc.sh install
-sudo ./svc.sh start
+# Edit ~/infra-runner/.env and uncomment the vault integration section:
+VAULT_COMPOSE_DIR=/home/ghrunner/infra-vault    # path to this repo on the server
+VAULT_TOKEN=hvs.XXXX                             # ops token from Step 2
+VAULT_ADDR=http://vault:8200
+VAULT_CERT_IDENTITY=https://github.com/uye-ltd/infra-vault/.github/workflows/deploy.yml@refs/heads/main
+COMPOSE_FILE=docker-compose.yml:docker-compose.vault.yml
+
+# Apply the change:
+cd ~/infra-runner
+docker compose up -d deployer
 ```
 
-Verify it appears as **Idle** in GitHub under Settings → Actions → Runners.
+Once configured, the deployer will automatically:
+- Detect new `vault-unseal` images on GHCR every `POLL_INTERVAL` seconds (default 60s)
+- Verify the cosign signature before pulling
+- Restart the `vault-unseal` container with the new image
+- Sync all `vault/policies/*.hcl` on every cycle (idempotent — safe to run continuously)
+
+#### GitHub Secrets
+
+**None required for deployment.** The `VAULT_TOKEN` stays on the server in infra-runner's `.env`, never in GitHub.
 
 ---
 
 ## Connecting the CI/CD pipeline
 
-Add **one secret** to your GitHub repository under **Settings → Secrets and variables → Actions**:
+After completing step 6 (infra-runner deployer setup):
 
-| Secret name | Value |
-|---|---|
-| `VAULT_TOKEN` | The ops token printed by `make init` |
-
-That's it. No SSH keys, no host addresses. The self-hosted runner handles everything locally.
-
-**After setup:**
-- Pull requests that touch `vault/` or `docker/` automatically validate policy syntax
+- Pull requests that touch `vault/` or `docker/` automatically validate policy syntax on a self-hosted runner (inline Vault dev server — no service containers)
 - Any push to `main`:
-  1. Builds the `vault-unseal` image and pushes it to GitHub Container Registry (GHCR)
-  2. The self-hosted runner on your server pulls the new image, restarts containers, and applies policies
+  1. Builds the `vault-unseal` image with Kaniko on a self-hosted runner and pushes to GHCR
+  2. Signs the image with cosign (keyless, OIDC-anchored to this workflow)
+  3. The infra-runner deployer on the server detects the new digest, verifies the signature, restarts `vault-unseal`, and syncs policies — no deploy job in CI
 
-> **First push note:** GHCR packages are private by default. After the first successful build, go to your GitHub profile → **Packages → vault-unseal → Package settings** and set visibility to **Public** (or keep it private and the runner uses its `GITHUB_TOKEN` automatically via the deploy workflow).
+> **GHCR visibility:** `vault-unseal` must be a **public** package. This is required because the infra-runner deployer uses a GitHub App installation token, which cannot access private GHCR packages. After the first build, go to your GitHub profile → **Packages → vault-unseal → Package settings → Change visibility → Public**.
 
 ---
 
@@ -576,7 +583,7 @@ vault token revoke -accessor <accessor>
 
 ## Managing policies
 
-Policies are HCL files in `vault/policies/`. They are applied automatically on every deploy via `scripts/apply-policies.sh`.
+Policies are HCL files in `vault/policies/`. They are applied automatically by the infra-runner deployer on every poll cycle (every 60 seconds) via `scripts/apply-policies.sh` — a policy-only commit takes effect without needing to rebuild the image.
 
 ### View an existing policy
 
@@ -659,9 +666,8 @@ vault operator rekey -nonce=<nonce> <current-unseal-key>
 ```
 
 After re-keying:
-1. Update `VAULT_UNSEAL_KEY` in the server's `.env` file
+1. Update `VAULT_UNSEAL_KEY` in `~/infra-vault/.env`
 2. Restart the vault-unseal container: `docker restart vault-unseal`
-3. Update the `VAULT_UNSEAL_KEY` GitHub Secret
 
 ---
 

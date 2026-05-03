@@ -28,9 +28,9 @@ is_sealed() {
 
 do_unseal() {
   log "vault is sealed, sending unseal key..."
-  result=$(curl -sf -X PUT "${VAULT_ADDR}/v1/sys/unseal" \
+  result=$(curl -s -X PUT "${VAULT_ADDR}/v1/sys/unseal" \
     -H "Content-Type: application/json" \
-    -d "{\"key\":\"${VAULT_UNSEAL_KEY}\"}" 2>/dev/null) || { log "unseal request failed"; return; }
+    -d "{\"key\":\"${VAULT_UNSEAL_KEY}\"}" 2>/dev/null) || { log "unseal request failed (network error)"; return; }
 
   if echo "$result" | jq -e '.sealed == false' >/dev/null 2>&1; then
     log "vault unsealed successfully"

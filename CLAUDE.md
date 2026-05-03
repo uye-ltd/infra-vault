@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Purpose
 
-Dockerized HashiCorp Vault for the UYE project. Single-node, Raft storage, behind a reverse proxy. GitHub Actions deploys to a bare-metal server via SSH.
+Dockerized HashiCorp Vault for the UYE project. Single-node, Raft storage, behind a reverse proxy. CI builds and cosign-signs the vault-unseal image; the infra-runner deployer applies it automatically (GitOps — no deploy job in CI).
 
 ## Architecture
 
@@ -15,10 +15,10 @@ docker/docker-compose.yml      vault + vault-unseal services
 docker/vault-unseal/           Alpine container that polls health and auto-unseals
 scripts/bootstrap.sh           One-time server setup: clone, build, start (run via curl | bash)
 scripts/init-vault.sh          One-time init: enables KV v2, AppRole, audit, applies policies
-scripts/apply-policies.sh      Idempotent policy sync (runs in CI/CD on every deploy)
+scripts/apply-policies.sh      Idempotent policy sync — run manually or called by infra-runner deployer every 60s
 scripts/new-app-role.sh        Creates an AppRole + policy file for a new app
-.github/workflows/validate.yml PR check: policy syntax via live dev-mode Vault
-.github/workflows/deploy.yml   Push to main: build image → push to GHCR → self-hosted runner deploys
+.github/workflows/validate.yml PR check: policy syntax via inline Vault dev server (self-hosted runner)
+.github/workflows/deploy.yml   Push to main: build vault-unseal with Kaniko → push to GHCR → cosign sign
 ```
 
 ### Key design decisions
@@ -28,8 +28,9 @@ scripts/new-app-role.sh        Creates an AppRole + policy file for a new app
 - **Auto-unseal via companion container** — `vault-unseal` polls `/v1/sys/health` every 15s and calls `/v1/sys/unseal` when sealed; key sourced from `VAULT_UNSEAL_KEY` env var
 - **AppRole auth** — one role per app; `role_id` is static config, `secret_id` is the runtime credential
 - **`vault-net` Docker network** — external named network that app compose files join to reach `http://vault:8200` without host port exposure
-- **Self-hosted GitHub Actions runner** — runs on the server, connects outbound to GitHub; no SSH keys stored in GitHub Secrets
-- **GHCR for vault-unseal image** — built in CI, pulled by the runner on deploy; local bootstrap uses `build:` for first run
+- **GitOps deployment via infra-runner deployer** — no deploy job in CI; the deployer polls GHCR every 60s, verifies the cosign signature, restarts `vault-unseal`, and syncs policies autonomously
+- **Self-hosted GitHub Actions runner** — provided by infra-runner; runs on the server, connects outbound to GitHub; no SSH keys or WireGuard secrets in GitHub
+- **GHCR for vault-unseal image** — built in CI with Kaniko (no Docker daemon), cosign-signed with keyless OIDC; infra-runner deployer verifies before deploying; local bootstrap uses `build:` for first run
 
 ### Adding a new app to Vault
 
@@ -70,4 +71,6 @@ See `README.md` for full step-by-step instructions covering: server setup, secre
 
 ## GitHub Actions Secrets Required
 
-`VAULT_TOKEN` only (ops policy token from `make init` output). SSH secrets are not needed — deployment uses a self-hosted runner on the server.
+**None required for deployment.** Deployment is handled entirely by the infra-runner deployer on the server — no SSH keys, WireGuard config, or `VAULT_TOKEN` are stored in GitHub Secrets.
+
+The `VAULT_TOKEN` (ops policy token from `make init`) is stored in infra-runner's `.env` on the server. See infra-runner's vault integration setup.
