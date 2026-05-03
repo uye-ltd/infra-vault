@@ -23,9 +23,12 @@ jobs:
 
       - name: Build and push with Kaniko
         run: |
-          kaniko \
-            --context="${GITHUB_WORKSPACE}/docker/vault-unseal" \
-            --dockerfile="Dockerfile" \
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}/docker/vault-unseal:/workspace" \
+            -v "$HOME/.docker/config.json:/kaniko/.docker/config.json:ro" \
+            gcr.io/kaniko-project/executor:latest \
+            --context=/workspace \
+            --dockerfile=Dockerfile \
             --destination="ghcr.io/uye-ltd/vault-unseal:latest" \
             --destination="ghcr.io/uye-ltd/vault-unseal:${{ github.sha }}"
 
