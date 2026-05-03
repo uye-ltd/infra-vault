@@ -245,7 +245,7 @@ After completing step 6 (infra-runner deployer setup):
 
 - Pull requests that touch `vault/` or `docker/` automatically validate policy syntax on a self-hosted runner (inline Vault dev server — no service containers)
 - Any push to `main`:
-  1. Builds the `vault-unseal` image via `docker run gcr.io/kaniko-project/executor` on a self-hosted runner and pushes to GHCR
+  1. Builds the `vault-unseal` image with Kaniko (daemonless) on a self-hosted runner and pushes to GHCR
   2. Signs the image with cosign (keyless, OIDC-anchored to this workflow)
   3. The infra-runner deployer on the server detects the new digest, verifies the signature, restarts `vault-unseal`, and syncs policies — no deploy job in CI
 

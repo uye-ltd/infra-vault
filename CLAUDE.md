@@ -30,7 +30,7 @@ scripts/new-app-role.sh        Creates an AppRole + policy file for a new app
 - **`vault-net` Docker network** — external named network that app compose files join to reach `http://vault:8200` without host port exposure
 - **GitOps deployment via infra-runner deployer** — no deploy job in CI; the deployer polls GHCR every 60s, verifies the cosign signature, restarts `vault-unseal`, and syncs policies autonomously
 - **Self-hosted GitHub Actions runner** — provided by infra-runner; runs on the server, connects outbound to GitHub; no SSH keys or WireGuard secrets in GitHub
-- **GHCR for vault-unseal image** — built in CI via `docker run gcr.io/kaniko-project/executor` (Kaniko runs as root in its own container; credentials shared via bind mount), cosign-signed with keyless OIDC; infra-runner deployer verifies before deploying; local bootstrap uses `build:` for first run
+- **GHCR for vault-unseal image** — built in CI with Kaniko binary (daemonless; runner container requires `cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]` to unpack Alpine layers), cosign-signed with keyless OIDC; infra-runner deployer verifies before deploying; local bootstrap uses `build:` for first run
 
 ### Adding a new app to Vault
 
