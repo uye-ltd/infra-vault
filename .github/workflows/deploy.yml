@@ -23,19 +23,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Configure Buildah storage
+        run: |
+          # containers/storage requires runRoot when graphRoot is explicitly set.
+          # The runner image bakes graphRoot=/kaniko but omits runRoot, which
+          # causes "runroot must be set" at library init before CLI flags apply.
+          printf '[storage]\n  driver = "overlay"\n  graphRoot = "/kaniko"\n  runRoot = "/tmp/buildah-run"\n\n[storage.options]\n\n  [storage.options.overlay]\n    mount_program = "/usr/bin/fuse-overlayfs"\n' \
+            > /etc/containers/storage.conf
+
       - name: Build and push with Buildah
         id: build
         run: |
           IMAGE=ghcr.io/uye-ltd/vault-unseal
-          # --runroot is required when graphRoot is explicitly set in storage.conf
-          BUILDAH="buildah --runroot /tmp/buildah-run"
-          ${BUILDAH} build \
+          buildah build \
             --file docker/vault-unseal/Dockerfile \
             --tag "${IMAGE}:latest" \
             --tag "${IMAGE}:${{ github.sha }}" \
             docker/vault-unseal
-          ${BUILDAH} push --digestfile /tmp/digest.txt "${IMAGE}:latest"
-          ${BUILDAH} push "${IMAGE}:${{ github.sha }}"
+          buildah push --digestfile /tmp/digest.txt "${IMAGE}:latest"
+          buildah push "${IMAGE}:${{ github.sha }}"
           echo "digest=$(cat /tmp/digest.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
