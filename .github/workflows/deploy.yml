@@ -14,26 +14,36 @@ jobs:
       id-token: write   # required for cosign OIDC keyless signing
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Log in to GHCR
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push with Kaniko
+      - name: Build and push with Buildah
+        id: build
         run: |
-          kaniko \
-            --context="${GITHUB_WORKSPACE}/docker/vault-unseal" \
-            --dockerfile="Dockerfile" \
-            --destination="ghcr.io/uye-ltd/vault-unseal:latest" \
-            --destination="ghcr.io/uye-ltd/vault-unseal:${{ github.sha }}"
+          IMAGE=ghcr.io/uye-ltd/vault-unseal
+          buildah build \
+            --file docker/vault-unseal/Dockerfile \
+            --tag "${IMAGE}:latest" \
+            --tag "${IMAGE}:${{ github.sha }}" \
+            docker/vault-unseal
+          buildah push --digestfile /tmp/digest.txt "${IMAGE}:latest"
+          buildah push "${IMAGE}:${{ github.sha }}"
+          echo "digest=$(cat /tmp/digest.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003  # v4.1.1
+        with:
+          cosign-release: 'v2.2.4'
 
       - name: Sign image
         run: |
           cosign sign --yes \
-            "ghcr.io/uye-ltd/vault-unseal:latest" \
-            "ghcr.io/uye-ltd/vault-unseal:${{ github.sha }}"
+            --registry-username "${{ github.actor }}" \
+            --registry-password "${{ secrets.GITHUB_TOKEN }}" \
+            "ghcr.io/uye-ltd/vault-unseal@${{ steps.build.outputs.digest }}"

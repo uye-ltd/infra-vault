@@ -17,8 +17,8 @@ scripts/bootstrap.sh           One-time server setup: clone, build, start (run v
 scripts/init-vault.sh          One-time init: enables KV v2, AppRole, audit, applies policies
 scripts/apply-policies.sh      Idempotent policy sync — run manually or called by infra-runner deployer every 60s
 scripts/new-app-role.sh        Creates an AppRole + policy file for a new app
-.github/workflows/validate.yml PR check: policy syntax via inline Vault dev server (self-hosted runner)
-.github/workflows/deploy.yml   Push to main: build vault-unseal with Kaniko → push to GHCR → cosign sign
+.github/workflows/validate.yml PR + push-to-main check: policy syntax via inline Vault dev server (self-hosted runner)
+.github/workflows/deploy.yml   Push to main: build vault-unseal with Buildah → push to GHCR → cosign sign by digest
 ```
 
 ### Key design decisions
@@ -30,7 +30,7 @@ scripts/new-app-role.sh        Creates an AppRole + policy file for a new app
 - **`vault-net` Docker network** — external named network that app compose files join to reach `http://vault:8200` without host port exposure
 - **GitOps deployment via infra-runner deployer** — no deploy job in CI; the deployer polls GHCR every 60s, verifies the cosign signature, restarts `vault-unseal`, and syncs policies autonomously
 - **Self-hosted GitHub Actions runner** — provided by infra-runner; runs on the server, connects outbound to GitHub; no SSH keys or WireGuard secrets in GitHub
-- **GHCR for vault-unseal image** — built in CI with Kaniko binary (daemonless; runner container requires `cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]` to unpack Alpine layers), cosign-signed with keyless OIDC; infra-runner deployer verifies before deploying; local bootstrap uses `build:` for first run
+- **GHCR for vault-unseal image** — built in CI with Buildah + fuse-overlayfs (daemonless, userspace OCI builds; runner container requires `cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]` to unpack Alpine layers); cosign-signed by digest with keyless OIDC; infra-runner deployer verifies before deploying; local bootstrap uses `build:` for first run. All GitHub Actions `uses:` references are SHA-pinned.
 
 ### Adding a new app to Vault
 
