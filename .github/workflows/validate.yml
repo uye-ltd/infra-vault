@@ -24,8 +24,8 @@ jobs:
 
       - name: Install Vault CLI
         run: |
-          VAULT_VERSION="2.0.0"
-          VAULT_SHA256="0367bdd46dd1fff1ff19fc44e60df48866515bb519c80527236b3808ea879ac2"
+          VAULT_VERSION="1.17.6"
+          VAULT_SHA256="0cddc1fbbb88583b5ba5b845f9f8fae47c6fb39a6d48cd543c6ba6fd3ac1a669"
           : "${VAULT_VERSION:?VAULT_VERSION must not be empty}"
           curl -fsSL "https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_linux_amd64.zip" \
             -o /tmp/vault.zip

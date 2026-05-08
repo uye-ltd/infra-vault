@@ -39,6 +39,7 @@ jobs:
             --file docker/vault-unseal/Dockerfile \
             --tag "${IMAGE}:latest" \
             --tag "${IMAGE}:${{ github.sha }}" \
+            --isolation=chroot \
             docker/vault-unseal
           buildah push --digestfile /tmp/digest.txt "${IMAGE}:latest"
           buildah push "${IMAGE}:${{ github.sha }}"
