@@ -31,7 +31,7 @@ jobs:
           printf '[storage]\n  driver = "overlay"\n  graphRoot = "/kaniko"\n  runRoot = "/tmp/buildah-run"\n\n[storage.options]\n\n  [storage.options.overlay]\n    mount_program = "/usr/bin/fuse-overlayfs"\n' \
             > /etc/containers/storage.conf
 
-      - name: Build and push with Buildah
+      - name: Build and push with Buildah 
         id: build
         run: |
           IMAGE=ghcr.io/uye-ltd/vault-unseal
