@@ -27,13 +27,15 @@ jobs:
         id: build
         run: |
           IMAGE=ghcr.io/uye-ltd/vault-unseal
-          buildah build \
+          # --runroot is required when graphRoot is explicitly set in storage.conf
+          BUILDAH="buildah --runroot /tmp/buildah-run"
+          ${BUILDAH} build \
             --file docker/vault-unseal/Dockerfile \
             --tag "${IMAGE}:latest" \
             --tag "${IMAGE}:${{ github.sha }}" \
             docker/vault-unseal
-          buildah push --digestfile /tmp/digest.txt "${IMAGE}:latest"
-          buildah push "${IMAGE}:${{ github.sha }}"
+          ${BUILDAH} push --digestfile /tmp/digest.txt "${IMAGE}:latest"
+          ${BUILDAH} push "${IMAGE}:${{ github.sha }}"
           echo "digest=$(cat /tmp/digest.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign

@@ -23,13 +23,16 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Install Vault CLI
+        env:
+          VAULT_VERSION: "2.0.0"
+          VAULT_SHA256: "0367bdd46dd1fff1ff19fc44e60df48866515bb519c80527236b3808ea879ac2"
         run: |
-          curl -fsSL https://apt.releases.hashicorp.com/gpg \
-            | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
-            https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
-            | tee /etc/apt/sources.list.d/hashicorp.list
-          apt-get update -qq && apt-get install -y vault
+          curl -fsSL "https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_linux_amd64.zip" \
+            -o /tmp/vault.zip
+          echo "${VAULT_SHA256}  /tmp/vault.zip" | sha256sum -c -
+          apt-get install -y --no-install-recommends unzip
+          unzip /tmp/vault.zip vault -d /usr/local/bin/
+          chmod +x /usr/local/bin/vault
 
       - name: Start Vault dev server
         run: |
