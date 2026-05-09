@@ -30,26 +30,6 @@ jobs:
           # causes "runroot must be set" at library init before CLI flags apply.
           printf '[storage]\n  driver = "overlay"\n  graphRoot = "/kaniko"\n  runRoot = "/tmp/buildah-run"\n\n[storage.options]\n\n  [storage.options.overlay]\n    mount_program = "/usr/bin/fuse-overlayfs"\n' \
             > /etc/containers/storage.conf
-          printf '[containers]\nuserns = "host"\n' \
-            > /etc/containers/containers.conf
-
-      - name: Diagnose build environment
-        run: |
-          echo "=== AppArmor profile ==="
-          cat /proc/self/attr/current 2>/dev/null || echo "none"
-          echo "=== Capabilities ==="
-          cat /proc/self/status | grep -E "^Cap|^NoNewPrivs|^Seccomp"
-          echo "=== User namespace test ==="
-          unshare --user echo "user ns: OK" 2>&1 || echo "user ns: BLOCKED (exit $?)"
-          echo "=== max_user_namespaces ==="
-          cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo "n/a"
-          echo "=== subuid/subgid ==="
-          cat /etc/subuid 2>/dev/null || echo "no /etc/subuid"
-          cat /etc/subgid 2>/dev/null || echo "no /etc/subgid"
-          echo "=== containers.conf ==="
-          cat /etc/containers/containers.conf 2>/dev/null || echo "none"
-          echo "=== buildah info ==="
-          buildah info 2>&1
 
       - name: Build and push with Buildah
         id: build
@@ -60,7 +40,6 @@ jobs:
             --tag "${IMAGE}:latest" \
             --tag "${IMAGE}:${{ github.sha }}" \
             --isolation=chroot \
-            --userns=host \
             docker/vault-unseal
           buildah push --digestfile /tmp/digest.txt "${IMAGE}:latest"
           buildah push "${IMAGE}:${{ github.sha }}"
