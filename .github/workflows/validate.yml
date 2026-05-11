@@ -22,17 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
-      - name: Install Vault CLI
-        run: |
-          VAULT_VERSION="1.17.6"
-          VAULT_SHA256="0cddc1fbbb88583b5ba5b845f9f8fae47c6fb39a6d48cd543c6ba6fd3ac1a669"
-          : "${VAULT_VERSION:?VAULT_VERSION must not be empty}"
-          curl -fsSL "https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_linux_amd64.zip" \
-            -o /tmp/vault.zip
-          echo "${VAULT_SHA256}  /tmp/vault.zip" | sha256sum -c -
-          apt-get install -y --no-install-recommends unzip
-          unzip /tmp/vault.zip vault -d /usr/local/bin/
-          chmod +x /usr/local/bin/vault
+      - name: Verify Vault CLI
+        # Vault is baked into the runner image (infra-runner Dockerfile installs it
+        # via HashiCorp APT during image build on GitHub-hosted runners).
+        # Runtime install is not possible: both releases.hashicorp.com and
+        # apt.releases.hashicorp.com return HTTP 404 from the runner server's IP
+        # (CloudFront WAF geo-restriction, confirmed by x-amzn-waf-reason: geo header).
+        run: vault version
 
       - name: Start Vault dev server
         run: |

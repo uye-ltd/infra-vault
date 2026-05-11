@@ -245,7 +245,7 @@ After completing step 6 (infra-runner deployer setup):
 
 - Pull requests **and pushes to `main`** that touch `vault/`, `docker/`, or `.github/workflows/` automatically validate policy syntax on a self-hosted runner (inline Vault dev server — no service containers)
 - Any push to `main`:
-  1. Builds the `vault-unseal` image with Buildah + fuse-overlayfs (daemonless OCI build; `--isolation=chroot` for `RUN` instructions — required on Ubuntu 24.04 due to AppArmor user-namespace restrictions) on a self-hosted runner and pushes to GHCR
+  1. Builds the `vault-unseal` image with Buildah + fuse-overlayfs (daemonless OCI build; `--isolation=chroot` for `RUN` instructions — defence-in-depth on Ubuntu 24.04). Buildah requires `CAP_SYS_PTRACE` and `CAP_SYS_ADMIN` for user-namespace setup: the kernel's `proc_setgroups_open` calls `ptrace_may_access` across namespace boundaries, and writing full-range uid_map entries requires `CAP_SYS_ADMIN`. The infra-runner AppArmor profile explicitly grants both. Vault CLI is baked into the runner image at build time (HashiCorp and GitHub CDNs are geo-blocked from the runner server IP — runtime install returns HTTP 404).
   2. Signs the image **by digest** with cosign (keyless, OIDC-anchored to this workflow) — signing by digest is immutable; signing by tag is not
   3. The infra-runner deployer on the server detects the new digest, verifies the signature, restarts `vault-unseal`, and syncs policies — no deploy job in CI
 
@@ -728,6 +728,43 @@ For host apps: confirm Vault is running and listening:
 ```bash
 curl http://127.0.0.1:8200/v1/sys/health
 ```
+
+### CI build fails with "open /proc/.../setgroups: permission denied"
+
+This is a buildah user-namespace setup failure caused by the infra-runner AppArmor profile being out of sync with the server. The profile must grant `sys_ptrace`, `sys_admin`, and `userns`, and include a `ptrace (read, trace, readby, tracedby) peer=infra-runner,` rule.
+
+Diagnose on the server:
+
+```bash
+# Check that the profile is loaded and enforcing:
+aa-status | grep infra-runner
+# Expected: infra-runner (enforce)
+
+# If missing or in complain mode, reload it:
+sudo bash ~/infra-runner/scripts/setup-apparmor.sh
+```
+
+If the profile is enforcing but builds still fail, verify the runner container has the required capabilities:
+
+```bash
+# Inside a runner container (docker exec runner-job-<id> bash):
+grep -E '^Cap(Eff|Bnd)' /proc/self/status
+# CapEff must include bits for SYS_PTRACE (bit 19) and SYS_ADMIN (bit 21)
+```
+
+### CI "Verify Vault CLI" step fails with "command not found"
+
+The runner image is out of date — the Vault CLI is baked into the image at build time. A new runner image needs to be built and deployed:
+
+```bash
+# On the server: check which runner image is in use
+docker ps --filter label=runner-role=runner --format '{{.Image}}'
+
+# Force the deployer to check for a new image:
+docker compose -f ~/infra-runner/docker-compose.yml restart deployer
+```
+
+If the runner image was recently rebuilt (infra-runner push to main), wait for the deployer's next poll cycle (default 60s) to pull and pre-cache it.
 
 ### Check Vault status and container health
 
