@@ -219,7 +219,7 @@ Deployment is handled by the [infra-runner](https://github.com/uye-ltd/infra-run
 VAULT_COMPOSE_DIR=/home/ghrunner/infra-vault    # path to this repo on the server
 VAULT_TOKEN=hvs.XXXX                             # ops token from Step 2
 VAULT_ADDR=http://vault:8200
-VAULT_CERT_IDENTITY=https://github.com/uye-ltd/infra-vault/.github/workflows/deploy.yml@refs/heads/main
+VAULT_CERT_IDENTITY=https://github.com/uye-ltd/infra-vault/.github/workflows/ci.yml@refs/heads/main
 COMPOSE_FILE=docker-compose.yml:docker-compose.vault.yml
 
 # Apply the change:
@@ -243,11 +243,15 @@ Once configured, the deployer will automatically:
 
 After completing step 6 (infra-runner deployer setup):
 
-- Pull requests **and pushes to `main`** that touch `vault/`, `docker/`, or `.github/workflows/` automatically validate policy syntax on a self-hosted runner (inline Vault dev server — no service containers)
-- Any push to `main`:
-  1. Builds the `vault-unseal` image with Buildah + fuse-overlayfs (daemonless OCI build; `--isolation=chroot` for `RUN` instructions — defence-in-depth on Ubuntu 24.04). Buildah requires `CAP_SYS_PTRACE` and `CAP_SYS_ADMIN` for user-namespace setup: the kernel's `proc_setgroups_open` calls `ptrace_may_access` across namespace boundaries, and writing full-range uid_map entries requires `CAP_SYS_ADMIN`. The infra-runner AppArmor profile explicitly grants both. Vault CLI is baked into the runner image at build time (HashiCorp and GitHub CDNs are geo-blocked from the runner server IP — runtime install returns HTTP 404).
-  2. Signs the image **by digest** with cosign (keyless, OIDC-anchored to this workflow) — signing by digest is immutable; signing by tag is not
-  3. The infra-runner deployer on the server detects the new digest, verifies the signature, restarts `vault-unseal`, and syncs policies — no deploy job in CI
+A single **CI** workflow (`.github/workflows/ci.yml`) covers both validation and image publishing:
+
+- **On every push to `main`:**
+  1. Validates policy syntax on a GitHub-hosted runner (inline Vault dev server — no service containers; Vault installed at runtime via HashiCorp APT)
+  2. If validation passes, builds the `vault-unseal` image with Buildah + fuse-overlayfs (daemonless OCI build; `--isolation=chroot` for `RUN` instructions — defence-in-depth on Ubuntu 24.04). Buildah requires `CAP_SYS_PTRACE` and `CAP_SYS_ADMIN` for user-namespace setup: the kernel's `proc_setgroups_open` calls `ptrace_may_access` across namespace boundaries, and writing full-range uid_map entries requires `CAP_SYS_ADMIN`. The infra-runner AppArmor profile explicitly grants both.
+  3. Signs the image **by digest** with cosign (keyless, OIDC-anchored to this workflow) — signing by digest is immutable; signing by tag is not
+  4. The infra-runner deployer on the server detects the new digest, verifies the signature, restarts `vault-unseal`, and syncs policies — no separate deploy job in CI
+
+- **On pull requests** that touch `vault/`, `docker/`, or `.github/workflows/`: only the validation step runs (build is skipped)
 
 > **GHCR visibility:** `vault-unseal` must be a **public** package. This is required because the infra-runner deployer uses a GitHub App installation token, which cannot access private GHCR packages. After the first build, go to your GitHub profile → **Packages → vault-unseal → Package settings → Change visibility → Public**.
 
@@ -752,19 +756,19 @@ grep -E '^Cap(Eff|Bnd)' /proc/self/status
 # CapEff must include bits for SYS_PTRACE (bit 19) and SYS_ADMIN (bit 21)
 ```
 
-### CI "Verify Vault CLI" step fails with "command not found"
+### CI "Install Vault" step fails with "Unable to locate package vault=..."
 
-The runner image is out of date — the Vault CLI is baked into the image at build time. A new runner image needs to be built and deployed:
+The pinned Vault version in `ci.yml` isn't published for the Ubuntu codename used by `ubuntu-latest`. This happens when GitHub bumps `ubuntu-latest` to a new LTS release before HashiCorp publishes packages for it.
+
+Fix: update the version string in `.github/workflows/ci.yml`:
 
 ```bash
-# On the server: check which runner image is in use
-docker ps --filter label=runner-role=runner --format '{{.Image}}'
-
-# Force the deployer to check for a new image:
-docker compose -f ~/infra-runner/docker-compose.yml restart deployer
+# Find the latest available version for your Ubuntu codename:
+curl -s "https://apt.releases.hashicorp.com/dists/$(lsb_release -cs)/main/binary-amd64/Packages" \
+  | grep -A1 "^Package: vault$" | grep Version | sort -V | tail -1
 ```
 
-If the runner image was recently rebuilt (infra-runner push to main), wait for the deployer's next poll cycle (default 60s) to pull and pre-cache it.
+Then update `sudo apt-get install -y vault=<new-version>` in the Install Vault step and push.
 
 ### Check Vault status and container health
 

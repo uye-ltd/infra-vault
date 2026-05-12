@@ -17,8 +17,7 @@ scripts/bootstrap.sh           One-time server setup: clone, build, start (run v
 scripts/init-vault.sh          One-time init: enables KV v2, AppRole, audit, applies policies
 scripts/apply-policies.sh      Idempotent policy sync — run manually or called by infra-runner deployer every 60s
 scripts/new-app-role.sh        Creates an AppRole + policy file for a new app
-.github/workflows/validate.yml PR + push-to-main check: policy syntax via inline Vault dev server (GitHub-hosted runner)
-.github/workflows/deploy.yml   Push to main: build vault-unseal with Buildah → push to GHCR → cosign sign by digest
+.github/workflows/ci.yml       Push to main + PRs: validate policies (GitHub-hosted), then build/push/sign vault-unseal (self-hosted, gated on validate)
 ```
 
 ### Key design decisions
