@@ -1,0 +1,15 @@
+# Plugin descriptor for infra-runner's generic deployer.
+# Sourced as shell — variables expand from the deployer's environment at load time.
+# See infra-runner/deployer/PLUGINS.md for the full format reference.
+
+PLUGIN_NAME=vault-unseal
+PLUGIN_IMAGE=ghcr.io/${GITHUB_ORG}/vault-unseal:latest
+PLUGIN_CERT_IDENTITY=${VAULT_CERT_IDENTITY}
+PLUGIN_COMPOSE_PROJECT=infra-vault
+PLUGIN_COMPOSE_DIR=/workspace-vault
+PLUGIN_COMPOSE_SERVICE=vault-unseal
+
+# Sync Vault policies every cycle — non-blocking because Vault may be sealed at startup.
+PLUGIN_POST_DEPLOY_0_SCRIPT=scripts/apply-policies.sh
+PLUGIN_POST_DEPLOY_0_RUN=always
+PLUGIN_POST_DEPLOY_0_BLOCKING=false

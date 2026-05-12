@@ -1,0 +1,17 @@
+# Overlay for infra-runner's deployer service.
+#
+# Mounts the infra-vault workspace and plugin descriptor into the deployer container so:
+#   - run_plugins() can find and process the vault-unseal descriptor
+#   - docker compose can update the vault-unseal service in-place
+#
+# Activate by adding to infra-runner's .env:
+#   COMPOSE_FILE=docker-compose.yml:../infra-vault/docker-compose.infra-runner.yml
+#
+# Prerequisites:
+#   - infra-vault must be deployed on this server (creates vault-net)
+#   - VAULT_COMPOSE_DIR, VAULT_TOKEN, VAULT_CERT_IDENTITY must be set in infra-runner's .env
+services:
+  deployer:
+    volumes:
+      - ${VAULT_COMPOSE_DIR}:/workspace-vault:ro
+      - ${VAULT_COMPOSE_DIR}/.infra-runner.plugin:/plugins/vault-unseal.plugin:ro

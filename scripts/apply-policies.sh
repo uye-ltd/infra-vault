@@ -1,30 +1,24 @@
-#!/usr/bin/env bash
-# Idempotently applies all policy files in vault/policies/ to Vault.
-# Safe to run on every deployment — existing policies are updated, new ones are created.
+#!/bin/bash
+# Post-deploy hook called by infra-runner's deployer each poll cycle.
+# Idempotently syncs all vault/policies/*.hcl files into Vault.
+# Failure exits non-zero (deployer treats this as a non-blocking warning).
+#
+# Required env: VAULT_TOKEN, VAULT_COMPOSE_DIR
+# Optional env: VAULT_ADDR (default: http://vault:8200), VAULT_NET (default: vault-net)
 set -euo pipefail
 
-VAULT_ADDR="${VAULT_ADDR:-http://127.0.0.1:8200}"
-POLICIES_DIR="$(cd "$(dirname "$0")/../vault/policies" && pwd)"
-export VAULT_ADDR
+: "${VAULT_TOKEN:?VAULT_TOKEN is required}"
+: "${VAULT_COMPOSE_DIR:?VAULT_COMPOSE_DIR is required}"
+VAULT_ADDR="${VAULT_ADDR:-http://vault:8200}"
+VAULT_NET="${VAULT_NET:-vault-net}"
 
-[ -z "${VAULT_TOKEN:-}" ] && { echo "VAULT_TOKEN is required"; exit 1; }
-export VAULT_TOKEN
-
-if command -v vault &>/dev/null; then
-  vault_cmd() { vault "$@"; }
-else
-  vault_cmd() {
-    docker exec -i \
-      -e VAULT_ADDR="${VAULT_ADDR}" \
-      -e VAULT_TOKEN="${VAULT_TOKEN}" \
-      vault vault "$@"
-  }
-fi
-
-echo "Applying policies from $POLICIES_DIR..."
-for policy_file in "$POLICIES_DIR"/*.hcl; do
-  policy_name=$(basename "$policy_file" .hcl)
-  vault_cmd policy write "$policy_name" - < "$policy_file"
-  echo "  Applied: $policy_name"
-done
-echo "Done."
+docker run --rm \
+  --network "${VAULT_NET}" \
+  -e VAULT_ADDR="${VAULT_ADDR}" \
+  -e VAULT_TOKEN="${VAULT_TOKEN}" \
+  -v "${VAULT_COMPOSE_DIR}/vault/policies:/policies:ro" \
+  hashicorp/vault:1.17 \
+  sh -c 'set -e; for f in /policies/*.hcl; do
+    name=$(basename "$f" .hcl); vault policy write "$name" "$f"; echo "Applied: $name"
+  done' \
+  || { echo "Vault policy sync failed — Vault may be sealed or unreachable" >&2; exit 1; }
