@@ -17,7 +17,7 @@ scripts/bootstrap.sh           One-time server setup: clone, build, start (run v
 scripts/init-vault.sh          One-time init: enables KV v2, AppRole, audit, applies policies
 scripts/apply-policies.sh      Idempotent policy sync — run manually or called by infra-runner deployer every 60s
 scripts/new-app-role.sh        Creates an AppRole + policy file for a new app
-.github/workflows/validate.yml PR + push-to-main check: policy syntax via inline Vault dev server (self-hosted runner)
+.github/workflows/validate.yml PR + push-to-main check: policy syntax via inline Vault dev server (GitHub-hosted runner)
 .github/workflows/deploy.yml   Push to main: build vault-unseal with Buildah → push to GHCR → cosign sign by digest
 ```
 
@@ -31,7 +31,7 @@ scripts/new-app-role.sh        Creates an AppRole + policy file for a new app
 - **GitOps deployment via infra-runner deployer** — no deploy job in CI; the deployer polls GHCR every 60s, verifies the cosign signature, restarts `vault-unseal`, and syncs policies autonomously
 - **Self-hosted GitHub Actions runner** — provided by infra-runner; runs on the server, connects outbound to GitHub; no SSH keys or WireGuard secrets in GitHub
 - **GHCR for vault-unseal image** — built in CI with Buildah + fuse-overlayfs (daemonless OCI builds; `--isolation=chroot` for `RUN` instructions as defence-in-depth). Ubuntu 24.04 sets `apparmor_restrict_unprivileged_userns=1`, which blocks `clone(CLONE_NEWUSER)` without explicit AppArmor permission — the `infra-runner` profile includes `userns,` and `ptrace (read, trace, readby, tracedby) peer=infra-runner,` to allow buildah to create user-namespaced build containers and write uid_map/gid_map across the user-namespace boundary. Runner container requires `cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, SYS_PTRACE, SYS_ADMIN]`: the last two are required by the kernel's user-namespace setup path (`proc_setgroups_open` calls `ptrace_may_access`; full-range uid_map writes require `CAP_SYS_ADMIN`). Cosign-signed by digest with keyless OIDC; infra-runner deployer verifies before deploying; local bootstrap uses `build:` for first run. All GitHub Actions `uses:` references are SHA-pinned.
-- **Vault CLI in CI** — Vault is baked into the runner image (installed via HashiCorp APT during image build on GitHub-hosted runners). Runtime install from either `releases.hashicorp.com` or `apt.releases.hashicorp.com` returns HTTP 404 from the runner server's IP — CloudFront WAF geo-restriction confirmed by the `x-amzn-waf-reason: geo` response header. Building the runner image on GitHub-hosted runners (which are not geo-blocked) sidesteps this entirely. Vault CE is available through 2.x; an older "CE capped at 1.17.x" claim was incorrect.
+- **Vault CLI in deploy runner** — Vault is baked into the self-hosted runner image (installed via HashiCorp APT during image build on GitHub-hosted runners). Runtime install from either `releases.hashicorp.com` or `apt.releases.hashicorp.com` returns HTTP 404 from the runner server's IP — CloudFront WAF geo-restriction confirmed by the `x-amzn-waf-reason: geo` response header. The validate job runs on `ubuntu-latest` (GitHub-hosted) and installs Vault via APT at runtime, which works because GitHub-hosted runners are not geo-blocked. Vault CE is available through 2.x; an older "CE capped at 1.17.x" claim was incorrect.
 
 ### Adding a new app to Vault
 
