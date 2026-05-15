@@ -212,15 +212,17 @@ Deployment is handled by the [infra-runner](https://github.com/uye-ltd/infra-run
 
 **Prerequisites:** infra-runner must already be deployed on this server.
 
-#### On the server — enable vault integration in infra-runner
+#### On the server — register this repo as an infra-runner plugin
+
+infra-runner uses a drop-in plugin system. This repo ships its own plugin descriptor (`.infra-runner.plugin`) and a Compose overlay (`docker-compose.infra-runner.yml`) — you only need to point infra-runner at them.
 
 ```bash
-# Edit ~/infra-runner/.env and uncomment the vault integration section:
+# Edit ~/infra-runner/.env and add:
 VAULT_COMPOSE_DIR=/home/ghrunner/infra-vault    # path to this repo on the server
 VAULT_TOKEN=hvs.XXXX                             # ops token from Step 2
 VAULT_ADDR=http://vault:8200
-VAULT_CERT_IDENTITY=https://github.com/uye-ltd/infra-vault/.github/workflows/ci.yml@refs/heads/main
-COMPOSE_FILE=docker-compose.yml:docker-compose.vault.yml
+VAULT_NET=vault-net
+COMPOSE_FILE=docker-compose.yml:../infra-vault/docker-compose.infra-runner.yml
 
 # Apply the change:
 cd ~/infra-runner
