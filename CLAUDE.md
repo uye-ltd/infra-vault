@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dockerized HashiCorp Vault for the UYE project. Single-node, Raft storage, behind a reverse proxy. CI builds and cosign-signs the vault-unseal image; the infra-runner deployer applies it automatically (GitOps — no deploy job in CI).
 
-## Architecture
+## Architecture 
 
 ```
 vault/config/vault.hcl               Vault server config (Raft storage, TCP listener)
