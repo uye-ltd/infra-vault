@@ -55,9 +55,9 @@ fi
 
 cd "$INSTALL_DIR"
 
-if [ ! -f .env ]; then
-  cp .env.example .env
-  step "Created .env from template"
+if [ ! -f docker/.env ]; then
+  cp docker/.env.example docker/.env
+  step "Created docker/.env from template"
 fi
 
 step "Starting containers (building vault-unseal locally for first run)..."
@@ -71,8 +71,8 @@ echo ""
 echo "  1. Initialize Vault:"
 echo "     cd $INSTALL_DIR && make init"
 echo ""
-echo "  2. Save the unseal key to .env:"
-echo "     nano $INSTALL_DIR/.env"
+echo "  2. Save the unseal key to docker/.env:"
+echo "     nano $INSTALL_DIR/docker/.env"
 echo "     → VAULT_UNSEAL_KEY=<key printed by make init>"
 echo ""
 echo "  3. Restart to activate auto-unseal:"

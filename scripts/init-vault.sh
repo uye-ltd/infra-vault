@@ -53,7 +53,7 @@ box "  Unseal Key : $UNSEAL_KEY"
 box "  Root Token : $ROOT_TOKEN"
 box "================================================================"
 echo ""
-echo "  1. Add to server .env: VAULT_UNSEAL_KEY=$UNSEAL_KEY"
+echo "  1. Add to server docker/.env: VAULT_UNSEAL_KEY=$UNSEAL_KEY"
 echo "  2. Store root token in a password manager, then revoke it after setup"
 echo ""
 

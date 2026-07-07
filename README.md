@@ -170,16 +170,16 @@ This runs `scripts/init-vault.sh`, which:
 
 | Value | Where to store it |
 |---|---|
-| Unseal Key | Password manager + server `.env` (step 3) |
+| Unseal Key | Password manager + server `docker/.env` (step 3) |
 | Root Token | Password manager only — revoke after setup (step 5) |
 | CI/CD Token | infra-runner `.env` on server — see step 6 |
 
 ---
 
-### Step 3 — Save the unseal key to .env
+### Step 3 — Save the unseal key to docker/.env
 
 ```bash
-nano ~/infra-vault/.env
+nano ~/infra-vault/docker/.env
 # Set: VAULT_UNSEAL_KEY=hvs.XXXXXXXX...
 ```
 
@@ -673,7 +673,7 @@ vault operator rekey -nonce=<nonce> <current-unseal-key>
 ```
 
 After re-keying:
-1. Update `VAULT_UNSEAL_KEY` in `~/infra-vault/.env`
+1. Update `VAULT_UNSEAL_KEY` in `~/infra-vault/docker/.env`
 2. Restart the vault-unseal container: `docker restart vault-unseal`
 
 ---
@@ -705,7 +705,7 @@ vault operator unseal   # prompts for key
 
 ### vault-unseal keeps logging "unseal failed"
 
-The `VAULT_UNSEAL_KEY` in `.env` is wrong or missing. Verify it matches what `vault operator init` printed, then restart:
+The `VAULT_UNSEAL_KEY` in `docker/.env` is wrong or missing. Verify it matches what `vault operator init` printed, then restart:
 
 ```bash
 docker restart vault-unseal

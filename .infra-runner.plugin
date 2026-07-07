@@ -6,7 +6,10 @@ PLUGIN_NAME=vault-unseal
 PLUGIN_IMAGE=ghcr.io/${GITHUB_ORG}/vault-unseal:latest
 PLUGIN_CERT_IDENTITY=${VAULT_CERT_IDENTITY}
 PLUGIN_COMPOSE_PROJECT=infra-vault
-PLUGIN_COMPOSE_DIR=/workspace-vault
+# Points at the docker/ subdir, which holds docker-compose.yml AND (on the server) .env.
+# The deployer runs `docker compose --project-directory <this> up` with no -f/--env-file,
+# so Compose must discover the compose file here and load docker/.env for VAULT_UNSEAL_KEY.
+PLUGIN_COMPOSE_DIR=/workspace-vault/docker
 PLUGIN_COMPOSE_SERVICE=vault-unseal
 
 # Sync Vault policies every cycle — non-blocking because Vault may be sealed at startup.
