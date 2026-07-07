@@ -39,6 +39,7 @@ do_unseal() {
   fi
 }
 
+log "starting: addr=${VAULT_ADDR} interval=${INTERVAL}s"
 wait_for_vault
 
 while true; do
