@@ -13,6 +13,8 @@ PLUGIN_COMPOSE_DIR=/workspace-vault/docker
 PLUGIN_COMPOSE_SERVICE=vault-unseal
 
 # Sync Vault policies every cycle — non-blocking because Vault may be sealed at startup.
-PLUGIN_POST_DEPLOY_0_SCRIPT=scripts/apply-policies.sh
+# Path is relative to PLUGIN_COMPOSE_DIR (=/workspace-vault/docker), so ../ reaches the
+# repo-root scripts/ dir where apply-policies.sh actually lives.
+PLUGIN_POST_DEPLOY_0_SCRIPT=../scripts/apply-policies.sh
 PLUGIN_POST_DEPLOY_0_RUN=always
 PLUGIN_POST_DEPLOY_0_BLOCKING=false
