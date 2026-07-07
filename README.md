@@ -74,7 +74,7 @@ This repo contains:
 
 **AppRole** is the auth method used by all apps. Each app has a `role_id` (public, like a username) and a `secret_id` (private, like a password). The app exchanges these for a short-lived token, then uses that token to read its secrets.
 
-**GitHub Actions self-hosted runner** (provided by infra-runner) runs directly on the server. It connects *outbound* to GitHub to receive jobs — no SSH port needs to be open, no SSH keys are stored in GitHub. When you push to `main`, CI builds and signs the `vault-unseal` image on GHCR. The **infra-runner deployer** on the server detects the new image, verifies its cosign signature, restarts `vault-unseal`, and syncs all policies automatically — no deploy job needed in CI.
+**GitHub Actions self-hosted runner** (provided by [infra-runner](https://github.com/uye-ltd/infra-runner)) runs directly on the server. It connects *outbound* to GitHub to receive jobs — no SSH port needs to be open, no SSH keys are stored in GitHub. When you push to `main`, CI builds and signs the `vault-unseal` image on GHCR. The **infra-runner deployer** on the server detects the new image, verifies its cosign signature, restarts `vault-unseal`, and syncs all policies automatically — no deploy job needed in CI.
 
 ---
 
@@ -222,6 +222,7 @@ VAULT_COMPOSE_DIR=/home/ghrunner/infra-vault    # path to this repo on the serve
 VAULT_TOKEN=hvs.XXXX                             # ops token from Step 2
 VAULT_ADDR=http://vault:8200
 VAULT_NET=vault-net
+VAULT_CERT_IDENTITY=https://github.com/uye-ltd/infra-vault/.github/workflows/ci.yml@refs/heads/main
 COMPOSE_FILE=docker-compose.yml:../infra-vault/docker-compose.infra-runner.yml
 
 # Apply the change:
