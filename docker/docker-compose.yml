@@ -1,5 +1,9 @@
 name: infra-vault  # explicit project name pins volume names regardless of checkout directory
 
+secrets:
+  vault_unseal_key:
+    environment: VAULT_UNSEAL_KEY
+
 services:
   vault:
     image: hashicorp/vault:1.17
@@ -32,8 +36,10 @@ services:
     restart: unless-stopped
     environment:
       VAULT_ADDR: http://vault:8200
-      VAULT_UNSEAL_KEY: ${VAULT_UNSEAL_KEY:-}  # empty on first run; filled after make init
+      VAULT_UNSEAL_KEY_FILE: /run/secrets/vault_unseal_key
       INTERVAL: "15"
+    secrets:
+      - vault_unseal_key
     depends_on:
       - vault
     networks:

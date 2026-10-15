@@ -1,6 +1,6 @@
 # infra-vault
 
-HashiCorp Vault secrets management for the UYE infrastructure. Runs as a Docker container on a bare-metal server, auto-unseals on restart, and syncs configuration changes via GitHub Actions.
+HashiCorp Vault secrets management for the UYE infrastructure. Vault auto-unseals on restart; an Ansible-installed executor deploys the signed unseal image and syncs root-owned policy snapshots.
 
 ---
 
@@ -10,7 +10,7 @@ HashiCorp Vault secrets management for the UYE infrastructure. Runs as a Docker 
 - [How it works](#how-it-works)
 - [Prerequisites](#prerequisites)
 - [First-time server setup](#first-time-server-setup)
-- [Connecting the CI/CD pipeline](#connecting-the-cicd-pipeline) (infra-runner deployer)
+- [Registering Vault with the host executor](#step-6--register-vault-with-the-host-executor)
 - [Managing secrets](#managing-secrets)
 - [Giving an app access to secrets](#giving-an-app-access-to-secrets)
   - [Dockerized apps](#dockerized-apps)
@@ -74,7 +74,7 @@ This repo contains:
 
 **AppRole** is the auth method used by all apps. Each app has a `role_id` (public, like a username) and a `secret_id` (private, like a password). The app exchanges these for a short-lived token, then uses that token to read its secrets.
 
-**GitHub Actions self-hosted runner** (provided by [infra-runner](https://github.com/uye-ltd/infra-runner)) runs directly on the server. It connects *outbound* to GitHub to receive jobs — no SSH port needs to be open, no SSH keys are stored in GitHub. When you push to `main`, CI builds and signs the `vault-unseal` image on GHCR. The **infra-runner deployer** on the server detects the new image, verifies its cosign signature, restarts `vault-unseal`, and syncs all policies automatically — no deploy job needed in CI.
+**GitHub Actions self-hosted runner** (provided by [infra-runner](https://github.com/uye-ltd/infra-runner)) runs directly on the server. It connects *outbound* to GitHub to receive jobs — no SSH port needs to be open, no SSH keys are stored in GitHub. When you push to `main`, CI builds and signs the `vault-unseal` image on GHCR. The root-owned `uye-deploy` executor on the server independently verifies the signed image, restarts `vault-unseal`, and applies root-owned policy snapshots. CI has no deploy credential.
 
 ---
 
@@ -206,57 +206,25 @@ docker exec -e VAULT_ADDR=http://127.0.0.1:8200 \
 
 ---
 
-### Step 6 — Connect the infra-runner deployer
+### Step 6 — Register Vault with the host executor
 
-Deployment is handled by the [infra-runner](https://github.com/uye-ltd/infra-runner) deployer running on the server. No SSH keys, WireGuard config, or `VAULT_TOKEN` are stored in GitHub Secrets.
+The `infra-ansible` `uye_deploy` role installs a root-owned Compose manifest, policy snapshot and credential files. Run `playbooks/deployer-prepare.yml` before the staged cutover described in `infra-ansible/docs/deployer-migration.md`. The executor validates the published release and updates the existing `infra-vault` project. The poller has no Docker access or Vault token.
 
-**Prerequisites:** infra-runner must already be deployed on this server.
-
-#### On the server — register this repo as an infra-runner plugin
-
-infra-runner uses a drop-in plugin system. This repo ships its own plugin descriptor (`.infra-runner.plugin`) and a Compose overlay (`docker-compose.infra-runner.yml`) — you only need to point infra-runner at them.
-
-```bash
-# Edit ~/infra-runner/.env and add:
-VAULT_COMPOSE_DIR=/home/ghrunner/infra-vault    # path to this repo on the server
-VAULT_TOKEN=hvs.XXXX                             # ops token from Step 2
-VAULT_ADDR=http://vault:8200
-VAULT_NET=vault-net
-VAULT_CERT_IDENTITY=https://github.com/uye-ltd/infra-vault/.github/workflows/ci.yml@refs/heads/main
-COMPOSE_FILE=docker-compose.yml:../infra-vault/docker-compose.infra-runner.yml
-
-# Apply the change:
-cd ~/infra-runner
-docker compose up -d deployer
-```
-
-Once configured, the deployer will automatically:
-- Detect new `vault-unseal` images on GHCR every `POLL_INTERVAL` seconds (default 60s)
-- Verify the cosign signature before pulling
-- Restart the `vault-unseal` container with the new image
-- Sync all `vault/policies/*.hcl` on every cycle (idempotent — safe to run continuously)
+The old plugin descriptor and Compose overlay are retired. Do not add Vault credentials or plugin settings to `infra-runner/.env`; production policy changes require rerunning Ansible so it can refresh the trusted snapshot.
 
 #### GitHub Secrets
 
-**None required for deployment.** The `VAULT_TOKEN` stays on the server in infra-runner's `.env`, never in GitHub.
+**None required for deployment.** The `VAULT_TOKEN` stays in `/etc/uye-deploy/secrets/vault-token` on the server, never in GitHub or the poller.
 
 ---
 
-## Connecting the CI/CD pipeline
+## Signed release and policy sync
 
-After completing step 6 (infra-runner deployer setup):
+CI validates Vault configuration and policies, builds the `vault-unseal` image under the protected `main` SHA with an OCI revision label, signs its digest and promotes that digest to `latest` only after checks pass. The GHCR package must be public. CI has no SSH or server deployment credential.
 
-A single **CI** workflow (`.github/workflows/ci.yml`) covers both validation and image publishing:
+`infra-ansible/roles/uye_deploy` owns the trusted `infra-vault/vault-unseal` Compose manifest, unseal key file, policy snapshot and fixed Vault CLI image. The host executor verifies `main`, fast-forward ancestry, tag agreement, signature identity and revision before updating the container. It syncs policies with a fixed command and sends the Vault token through stdin. The token is absent from Docker argv and inspect. A sync failure remains visible in executor status and is retried. The Dockerless poller cannot read the token or invoke Docker.
 
-- **On every push to `main`:**
-  1. Validates policy syntax on a GitHub-hosted runner (inline Vault dev server — no service containers; Vault installed at runtime via HashiCorp APT)
-  2. If validation passes, builds the `vault-unseal` image with Buildah + fuse-overlayfs (daemonless OCI build; `--isolation=chroot` for `RUN` instructions — defence-in-depth on Ubuntu 24.04). Buildah requires `CAP_SYS_PTRACE` and `CAP_SYS_ADMIN` for user-namespace setup: the kernel's `proc_setgroups_open` calls `ptrace_may_access` across namespace boundaries, and writing full-range uid_map entries requires `CAP_SYS_ADMIN`. The infra-runner AppArmor profile explicitly grants both.
-  3. Signs the image **by digest** with cosign (keyless, OIDC-anchored to this workflow) — signing by digest is immutable; signing by tag is not
-  4. The infra-runner deployer on the server detects the new digest, verifies the signature, restarts `vault-unseal`, and syncs policies — no separate deploy job in CI
-
-- **On pull requests** that touch `vault/`, `docker/`, or `.github/workflows/`: only the validation step runs (build is skipped)
-
-> **GHCR visibility:** `vault-unseal` must be a **public** package. This is required because the infra-runner deployer uses a GitHub App installation token, which cannot access private GHCR packages. After the first build, go to your GitHub profile → **Packages → vault-unseal → Package settings → Change visibility → Public**.
+The old `.infra-runner.plugin` and `docker-compose.infra-runner.yml` are retired and inert. Updating checkout policy files alone does not update production: rerun Ansible to install the root-owned snapshot. The generic `scripts/apply-policies.sh` is no longer executed by the privileged deployer. Do not restore its overlay or mount the checkout into the poller.
 
 ---
 
@@ -590,7 +558,7 @@ vault token revoke -accessor <accessor>
 
 ## Managing policies
 
-Policies are HCL files in `vault/policies/`. They are applied automatically by the infra-runner deployer on every poll cycle (every 60 seconds) via `scripts/apply-policies.sh` — a policy-only commit takes effect without needing to rebuild the image.
+Policies are HCL files in `vault/policies/`. Ansible copies them to the root-owned production snapshot. The executor applies that snapshot on its next cycle. A checkout or policy-only commit does not change production until Ansible is rerun.
 
 ### View an existing policy
 
@@ -602,7 +570,7 @@ vault policy list
 ### Add or update a policy
 
 1. Edit or create `vault/policies/my-app.hcl`
-2. Commit and push to `main` — CI/CD applies it automatically
+2. Have the change committed and published through the normal review process, then rerun the Ansible `uye_deploy` role to refresh the trusted snapshot
 
 Or apply immediately without a deploy:
 

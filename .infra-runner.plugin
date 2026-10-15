@@ -1,20 +1,2 @@
-# Plugin descriptor for infra-runner's generic deployer.
-# Sourced as shell — variables expand from the deployer's environment at load time.
-# See infra-runner/deployer/PLUGINS.md for the full format reference.
-
-PLUGIN_NAME=vault-unseal
-PLUGIN_IMAGE=ghcr.io/${GITHUB_ORG}/vault-unseal:latest
-PLUGIN_CERT_IDENTITY=${VAULT_CERT_IDENTITY}
-PLUGIN_COMPOSE_PROJECT=infra-vault
-# Points at the docker/ subdir, which holds docker-compose.yml AND (on the server) .env.
-# The deployer runs `docker compose --project-directory <this> up` with no -f/--env-file,
-# so Compose must discover the compose file here and load docker/.env for VAULT_UNSEAL_KEY.
-PLUGIN_COMPOSE_DIR=/workspace-vault/docker
-PLUGIN_COMPOSE_SERVICE=vault-unseal
-
-# Sync Vault policies every cycle — non-blocking because Vault may be sealed at startup.
-# Path is relative to PLUGIN_COMPOSE_DIR (=/workspace-vault/docker), so ../ reaches the
-# repo-root scripts/ dir where apply-policies.sh actually lives.
-PLUGIN_POST_DEPLOY_0_SCRIPT=../scripts/apply-policies.sh
-PLUGIN_POST_DEPLOY_0_RUN=always
-PLUGIN_POST_DEPLOY_0_BLOCKING=false
+# Retired. The Dockerless poller never loads plugin descriptors.
+# Managed releases are allowlisted in infra-ansible/roles/uye_deploy.

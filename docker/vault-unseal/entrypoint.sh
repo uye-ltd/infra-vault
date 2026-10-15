@@ -3,6 +3,13 @@ set -eu
 
 VAULT_ADDR="${VAULT_ADDR:-http://vault:8200}"
 INTERVAL="${INTERVAL:-15}"
+VAULT_UNSEAL_KEY_FILE="${VAULT_UNSEAL_KEY_FILE:-/run/secrets/vault_unseal_key}"
+if [ ! -r "$VAULT_UNSEAL_KEY_FILE" ]; then
+  echo "unseal key file is missing" >&2
+  exit 1
+fi
+VAULT_UNSEAL_KEY="$(cat "$VAULT_UNSEAL_KEY_FILE")"
+unset VAULT_UNSEAL_KEY_FILE
 
 log() { echo "[vault-unseal] $*"; }
 
@@ -28,14 +35,16 @@ is_sealed() {
 
 do_unseal() {
   log "vault is sealed, sending unseal key..."
-  result=$(curl -s -X PUT "${VAULT_ADDR}/v1/sys/unseal" \
-    -H "Content-Type: application/json" \
-    -d "{\"key\":\"${VAULT_UNSEAL_KEY}\"}" 2>/dev/null) || { log "unseal request failed (network error)"; return; }
+  result=$(printf '{"key":"%s"}' "$VAULT_UNSEAL_KEY" | \
+    curl -s -X PUT "${VAULT_ADDR}/v1/sys/unseal" \
+      -H "Content-Type: application/json" --data-binary @- 2>/dev/null) || {
+    log "unseal request failed (network error)"; return;
+  }
 
   if echo "$result" | jq -e '.sealed == false' >/dev/null 2>&1; then
     log "vault unsealed successfully"
   else
-    log "unseal result: $(echo "$result" | jq -c '{sealed,progress,errors}' 2>/dev/null || echo "$result")"
+    log "unseal request rejected"
   fi
 }
 
